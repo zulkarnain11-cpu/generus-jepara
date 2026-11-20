@@ -1356,11 +1356,28 @@
     // ============================================================================
     let supabaseClient = null;
     let isLiveSupabase = false;
+    let isWebSocketAllowed = true;
+
+    function detectWebSocketSupport() {
+      try {
+        if (typeof window === "undefined" || typeof window.WebSocket === "undefined") {
+          return false;
+        }
+        // Deteksi apakah WebSocket diizinkan oleh CSP/sandbox (seperti pratinjau Canvas)
+        if (window.self !== window.top && String(window.location.protocol) === "blob:") {
+          return false;
+        }
+        return true;
+      } catch (e) {
+        return false;
+      }
+    }
 
     function initSupabase(url, key) {
       const cleanUrl = String(url || "").trim().replace(/\/rest\/v1\/?$/i, "").replace(/\/+$/, "");
       if (cleanUrl && key && window.supabase) {
         try {
+          isWebSocketAllowed = detectWebSocketSupport();
           supabaseClient = window.supabase.createClient(cleanUrl, key);
           isLiveSupabase = true;
           return true;
@@ -1374,95 +1391,162 @@
     }
 
     initSupabase(APP_CONFIG.SUPABASE_URL, APP_CONFIG.SUPABASE_ANON_KEY);
-
-    async function resilientSupabaseMutation(table, method, payload, matchObj = null, options = {}) {
-      if (!isLiveSupabase || !supabaseClient) return { error: null };
-      let currentPayload = Array.isArray(payload)
-        ? payload.map(item => ({ ...item }))
-        : (payload ? { ...payload } : null);
-
-      for (let attempt = 0; attempt < 12; attempt++) {
-        let query;
-        if (method === "insert") {
-          query = supabaseClient.from(table).insert(currentPayload);
-        } else if (method === "upsert") {
-          query = supabaseClient.from(table).upsert(currentPayload, options);
-        } else if (method === "update") {
-          query = supabaseClient.from(table).update(currentPayload);
-          if (matchObj) {
-            Object.entries(matchObj).forEach(([k, v]) => { query = query.eq(k, v); });
-          }
-        }
-        const res = await query;
-        if (!res.error) return res;
-
-        const msg = String(res.error.message || "");
-        const colMatch = msg.match(/Could not find the '([^']+)' column/i) || msg.match(/column "([^"]+)" of relation/i);
-        if (colMatch && colMatch[1] && currentPayload) {
-          const missingCol = colMatch[1];
-          if (Array.isArray(currentPayload)) {
-            currentPayload.forEach(item => { delete item[missingCol]; });
-          } else {
-            delete currentPayload[missingCol];
-          }
-          continue;
-        }
-        return res;
-      }
-      return { error: null };
-    }
-
-    function openSupabaseConfigModal() {
-      if (!appState.currentUser || appState.currentUser.role !== "admin") {
-        showToast("Pengaturan koneksi database hanya dapat diakses oleh Admin Daerah.", "error");
-        return;
-      }
-      openModal(
-        "Pengaturan Koneksi Database Supabase (Admin)",
-        `
-          <div class="space-y-4">
-            <div class="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs sm:text-sm leading-relaxed">
-              <strong>Status Database:</strong> <strong>${isLiveSupabase ? "Terhubung ke Supabase Cloud" : "Belum Dikonfigurasi"}</strong>.<br/>
-              Pengaturan ini hanya tampil di akun Admin Daerah sehingga user kelompok tidak dapat mengubahnya.
-            </div>
-            <div>
-              <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Supabase Project URL</label>
-              <input id="cfgSupaUrl" type="url" value="${escapeHTML(APP_CONFIG.SUPABASE_URL)}" placeholder="https://xyzcompany.supabase.co" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none text-sm" />
-            </div>
-            <div>
-              <label class="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1">Supabase Anon Public Key</label>
-              <textarea id="cfgSupaKey" rows="3" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none text-xs font-mono">${escapeHTML(APP_CONFIG.SUPABASE_ANON_KEY)}</textarea>
-            </div>
-          </div>
-        `,
-        `
-          <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 font-semibold text-sm">Tutup</button>
-          <button type="button" onclick="applySupabaseConfigFromModal()" class="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-sm">Simpan & Hubungkan</button>
-        `
-      );
-    }
-
-    async function applySupabaseConfigFromModal() {
-      const url = document.getElementById("cfgSupaUrl").value.trim();
-      const key = document.getElementById("cfgSupaKey").value.trim();
-      if (!url || !key) {
-        showToast("URL dan Anon Key wajib diisi.", "warning");
-        return;
-      }
-      APP_CONFIG.SUPABASE_URL = url;
-      APP_CONFIG.SUPABASE_ANON_KEY = key;
+    async function broadcastRealtimeEvent(eventName, payload) {
+      if (!isLiveSupabase || !supabaseClient || !isWebSocketAllowed) return;
       try {
-        localStorage.setItem("digenara_supa_url", url);
-        localStorage.setItem("digenara_supa_key", key);
-      } catch (e) {}
+        if (deviceNotifState.realtimeChannel && deviceNotifState.realtimeSubscribed) {
+          await deviceNotifState.realtimeChannel.send({
+            type: "broadcast",
+            event: eventName,
+            payload
+          });
+          return;
+        }
+        const tempChannel = supabaseClient.channel("digenara-live-broadcast", {
+          config: { broadcast: { ack: false, self: false } }
+        });
+        await new Promise((resolve) => {
+          const timeout = setTimeout(() => {
+            try { supabaseClient.removeChannel(tempChannel); } catch (e) {}
+            resolve();
+          }, 2500);
+          tempChannel.subscribe(async (status) => {
+            if (status === "SUBSCRIBED") {
+              clearTimeout(timeout);
+              await tempChannel.send({ type: "broadcast", event: eventName, payload });
+              setTimeout(() => {
+                try { supabaseClient.removeChannel(tempChannel); } catch (e) {}
+                resolve();
+              }, 250);
+            }
+          });
+        });
+      } catch (e) {
+        isWebSocketAllowed = false;
+      }
+    }
 
-      if (initSupabase(url, key)) {
-        closeModal();
-        showToast("Konfigurasi database Supabase berhasil disimpan!", "success");
-        await syncAllFromSupabase();
-        renderApp();
-      } else {
-        showToast("Format URL atau Key tidak valid.", "error");
+    function attachGlobalWakeupSyncListeners() {
+      if (deviceNotifState.listenersAttached) return;
+      deviceNotifState.listenersAttached = true;
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+          fetchLatestAnnouncementsAndSettingsNow();
+          if (isWebSocketAllowed && !deviceNotifState.realtimeSubscribed) {
+            setupSupabaseNotificationRealtime();
+          }
+        }
+      });
+
+      window.addEventListener("focus", () => {
+        fetchLatestAnnouncementsAndSettingsNow();
+      });
+
+      window.addEventListener("online", () => {
+        fetchLatestAnnouncementsAndSettingsNow();
+        if (isWebSocketAllowed) {
+          setupSupabaseNotificationRealtime();
+        }
+      });
+    }
+
+    function setupSupabaseNotificationRealtime() {
+      attachGlobalWakeupSyncListeners();
+      if (!isLiveSupabase || !supabaseClient) return;
+
+      if (!deviceNotifState.pollTimer) {
+        deviceNotifState.pollTimer = setInterval(() => {
+          fetchLatestAnnouncementsAndSettingsNow();
+        }, 4000);
+      }
+
+      if (!isWebSocketAllowed) return;
+
+      try {
+        if (deviceNotifState.reconnectTimer) {
+          clearTimeout(deviceNotifState.reconnectTimer);
+          deviceNotifState.reconnectTimer = null;
+        }
+        if (deviceNotifState.realtimeChannel) {
+          supabaseClient.removeChannel(deviceNotifState.realtimeChannel);
+          deviceNotifState.realtimeChannel = null;
+          deviceNotifState.realtimeSubscribed = false;
+        }
+
+        const channel = supabaseClient
+          .channel("digenara-live-broadcast", {
+            config: { broadcast: { ack: false, self: false } }
+          })
+          .on("broadcast", { event: "new_announcement" }, async ({ payload }) => {
+            if (payload && payload.id) {
+              if (!dbStore.pengumuman.some(a => a.id === payload.id)) {
+                dbStore.pengumuman.unshift(payload);
+              }
+              await checkAndDispatchAutoNotifications(false);
+              if (appState.currentUser) renderApp();
+            }
+          })
+          .on("broadcast", { event: "deadline_updated" }, async ({ payload }) => {
+            if (payload) {
+              applySystemSettingsObject(payload);
+              await checkAndDispatchAutoNotifications(false);
+              if (appState.currentUser) renderApp();
+            }
+          })
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "pengumuman" },
+            async (payload) => {
+              const newAnn = payload?.new;
+              if (newAnn && newAnn.id) {
+                if (!dbStore.pengumuman.some(a => a.id === newAnn.id)) {
+                  dbStore.pengumuman.unshift(newAnn);
+                }
+                await checkAndDispatchAutoNotifications(false);
+                if (appState.currentUser) renderApp();
+              } else if (payload?.eventType === "DELETE") {
+                await fetchLatestAnnouncementsAndSettingsNow();
+              }
+            }
+          )
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "pengaturan_sistem" },
+            async (payload) => {
+              if (payload?.new) {
+                applySystemSettingsObject(payload.new);
+                await checkAndDispatchAutoNotifications(false);
+                if (appState.currentUser) renderApp();
+              }
+            }
+          )
+          .subscribe((status, err) => {
+            if (err && (err.name === "SecurityError" || String(err.message || "").includes("not allowed"))) {
+              isWebSocketAllowed = false;
+              deviceNotifState.realtimeSubscribed = false;
+              try { supabaseClient.removeChannel(channel); } catch (e) {}
+              deviceNotifState.realtimeChannel = null;
+              return;
+            }
+            if (status === "SUBSCRIBED") {
+              deviceNotifState.realtimeSubscribed = true;
+            } else if (status === "CLOSED" || status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+              deviceNotifState.realtimeSubscribed = false;
+              if (isWebSocketAllowed && !deviceNotifState.reconnectTimer) {
+                deviceNotifState.reconnectTimer = setTimeout(() => {
+                  deviceNotifState.reconnectTimer = null;
+                  setupSupabaseNotificationRealtime();
+                }, 4000);
+              }
+            }
+          });
+
+        deviceNotifState.realtimeChannel = channel;
+      } catch (err) {
+        isWebSocketAllowed = false;
+        deviceNotifState.realtimeSubscribed = false;
+        deviceNotifState.realtimeChannel = null;
       }
     }
 
