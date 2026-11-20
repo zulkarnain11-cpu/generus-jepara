@@ -1391,6 +1391,123 @@
     }
 
     initSupabase(APP_CONFIG.SUPABASE_URL, APP_CONFIG.SUPABASE_ANON_KEY);
+
+    // ============================================================================
+    // HELPER MUTASI SUPABASE TAHAN BANTING & PENGATURAN KONEKSI DATABASE
+    // ============================================================================
+    async function resilientSupabaseMutation(table, operation, payload, matchObj = null, options = {}) {
+      if (!isLiveSupabase || !supabaseClient) {
+        return { data: null, error: null };
+      }
+      try {
+        let query = supabaseClient.from(table);
+        if (operation === "insert") {
+          return await query.insert(payload);
+        } else if (operation === "upsert") {
+          return await query.upsert(payload, options);
+        } else if (operation === "update") {
+          let uq = query.update(payload);
+          if (matchObj && typeof matchObj === "object") {
+            Object.entries(matchObj).forEach(([k, v]) => {
+              uq = uq.eq(k, v);
+            });
+          }
+          return await uq;
+        } else if (operation === "delete") {
+          let dq = query.delete();
+          if (matchObj && typeof matchObj === "object") {
+            Object.entries(matchObj).forEach(([k, v]) => {
+              dq = dq.eq(k, v);
+            });
+          }
+          return await dq;
+        }
+        return { data: null, error: null };
+      } catch (err) {
+        console.error(`Supabase ${operation} error on ${table}:`, err);
+        return { data: null, error: { message: err?.message || "Gagal terhubung ke database." } };
+      }
+    }
+
+    function openSupabaseConfigModal() {
+      if (!appState.currentUser || appState.currentUser.role !== "admin") {
+        showToast("Hanya Admin Daerah yang dapat mengatur koneksi database.", "error");
+        return;
+      }
+      openModal(
+        "Pengaturan Koneksi Database Supabase",
+        `
+          <form id="formSupabaseCfg" onsubmit="saveSupabaseConfigForm(event)" class="space-y-4">
+            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-700 leading-relaxed">
+              Status Koneksi Saat Ini:
+              <strong class="${isLiveSupabase ? 'text-emerald-700' : 'text-amber-700'}">
+                ${isLiveSupabase ? "🟢 Terhubung ke Supabase Cloud" : "🟡 Mode Lokal (Offline)"}
+              </strong>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Supabase Project URL *</label>
+              <input id="cfgSupaUrl" type="url" required value="${escapeHTML(APP_CONFIG.SUPABASE_URL)}"
+                placeholder="https://xxxxx.supabase.co"
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-mono" />
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-700 mb-1">Supabase Anon Public Key *</label>
+              <textarea id="cfgSupaKey" rows="3" required
+                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-mono">${escapeHTML(APP_CONFIG.SUPABASE_ANON_KEY)}</textarea>
+            </div>
+          </form>
+        `,
+        `
+          <button type="button" onclick="resetSupabaseConfigToDefault()" class="px-3.5 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 mr-auto">
+            ↺ Reset Default
+          </button>
+          <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-sm font-semibold">Batal</button>
+          <button type="submit" form="formSupabaseCfg" class="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-bold">
+            Simpan & Hubungkan
+          </button>
+        `,
+        "max-w-lg"
+      );
+    }
+
+    async function saveSupabaseConfigForm(e) {
+      e.preventDefault();
+      const newUrl = document.getElementById("cfgSupaUrl").value.trim();
+      const newKey = document.getElementById("cfgSupaKey").value.trim();
+      if (!newUrl || !newKey) {
+        showToast("URL dan Anon Key Supabase wajib diisi.", "warning");
+        return;
+      }
+      APP_CONFIG.SUPABASE_URL = newUrl;
+      APP_CONFIG.SUPABASE_ANON_KEY = newKey;
+      try {
+        localStorage.setItem("digenara_supa_url", newUrl);
+        localStorage.setItem("digenara_supa_key", newKey);
+      } catch (err) {}
+
+      const ok = initSupabase(newUrl, newKey);
+      closeModal();
+      if (ok) {
+        setupSupabaseNotificationRealtime();
+        await syncAllFromSupabase();
+        showToast("Koneksi Supabase berhasil diperbarui & disinkronkan!", "success");
+      } else {
+        showToast("Gagal menginisialisasi koneksi Supabase. Periksa URL/Key.", "error");
+      }
+      renderApp();
+    }
+
+    function resetSupabaseConfigToDefault() {
+      try {
+        localStorage.removeItem("digenara_supa_url");
+        localStorage.removeItem("digenara_supa_key");
+      } catch (err) {}
+      closeModal();
+      showToast("Konfigurasi Supabase dikembalikan ke pengaturan awal. Muat ulang halaman...", "info");
+      setTimeout(() => window.location.reload(), 900);
+    }
+
     async function broadcastRealtimeEvent(eventName, payload) {
       if (!isLiveSupabase || !supabaseClient || !isWebSocketAllowed) return;
       try {
