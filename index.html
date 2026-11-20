@@ -811,6 +811,8 @@
       selectedMonth: wibNow.month,
       selectedYear: wibNow.year,
       jurnalFilterGuru: "ALL",
+      jurnalModalSelectedMateri: [],
+      jurnalModalDraftValues: {},
       presensiSelectedRombel: "",
       presensiActiveDate: wibNow.isoDate,
       isOfflineMode: !navigator.onLine,
@@ -1971,20 +1973,20 @@
 
       const navTabs = isAdmin
         ? [
-            { id: "dashboard", label: "📊 Dashboard Daerah" },
-            { id: "akun", label: "👥 Kelola Akun", badge: pendingAccountsCount },
-            { id: "generus", label: "🎓 Data Generus" },
-            { id: "periksa", label: "📝 Periksa Laporan" },
-            { id: "rekap", label: "📈 Rekap Gabungan" },
-            { id: "pengumuman", label: "📢 Pengumuman & Pengaturan" }
+            { id: "dashboard", icon: "📊", shortLabel: "Daerah", label: "📊 Dashboard Daerah" },
+            { id: "akun", icon: "👥", shortLabel: "Akun", label: "👥 Kelola Akun", badge: pendingAccountsCount },
+            { id: "generus", icon: "🎓", shortLabel: "Generus", label: "🎓 Data Generus" },
+            { id: "periksa", icon: "📝", shortLabel: "Periksa", label: "📝 Periksa Laporan" },
+            { id: "rekap", icon: "📈", shortLabel: "Rekap", label: "📈 Rekap Gabungan" },
+            { id: "pengumuman", icon: "📢", shortLabel: "Info", label: "📢 Pengumuman & Pengaturan" }
           ]
         : [
-            { id: "dashboard", label: "🏠 Beranda" },
-            { id: "jurnal", label: "📓 1. Jurnal Guru" },
-            { id: "presensi", label: "✅ 2. Presensi" },
-            { id: "laporan", label: "📋 3. Laporan Kegiatan" },
-            { id: "dokumentasi", label: "📸 4. Dokumentasi" },
-            { id: "kendala", label: "💡 5. Kendala & Evaluasi" }
+            { id: "dashboard", icon: "🏠", shortLabel: "Beranda", label: "🏠 Beranda" },
+            { id: "jurnal", icon: "📓", shortLabel: "Jurnal", label: "📓 1. Jurnal Guru" },
+            { id: "presensi", icon: "✅", shortLabel: "Presensi", label: "✅ 2. Presensi" },
+            { id: "laporan", icon: "📋", shortLabel: "Laporan", label: "📋 3. Laporan Kegiatan" },
+            { id: "dokumentasi", icon: "📸", shortLabel: "Foto", label: "📸 4. Dokumentasi" },
+            { id: "kendala", icon: "💡", shortLabel: "Kendala", label: "💡 5. Kendala & Evaluasi" }
           ];
 
       let tabContent = "";
@@ -2080,21 +2082,8 @@
               </div>
             </div>
 
-            <!-- Bar Periode Khusus Mobile/Tablet -->
-            <div class="lg:hidden bg-emerald-950/80 px-3 py-2 border-t border-emerald-800 flex items-center justify-between gap-2">
-              <span class="text-xs font-bold text-emerald-200">Periode Laporan:</span>
-              <div class="flex items-center gap-1.5">
-                <select onchange="appState.selectedMonth=Number(this.value); renderApp();" class="bg-emerald-900 text-white text-xs font-bold px-2.5 py-1 rounded-lg border border-emerald-700">
-                  ${NAMA_BULAN.map((nb, idx) => `<option value="${idx + 1}" ${appState.selectedMonth === idx + 1 ? "selected" : ""}>${nb}</option>`).join("")}
-                </select>
-                <select onchange="appState.selectedYear=Number(this.value); renderApp();" class="bg-emerald-900 text-white text-xs font-bold px-2.5 py-1 rounded-lg border border-emerald-700">
-                  ${yearsList.map(y => `<option value="${y}" ${appState.selectedYear === y ? "selected" : ""}>${y}</option>`).join("")}
-                </select>
-              </div>
-            </div>
-
-            <!-- Navigasi Menu -->
-            <nav class="bg-white text-slate-700 border-b border-slate-200 overflow-x-auto">
+            <!-- Navigasi Menu (Desktop & Tablet) -->
+            <nav class="hidden md:block bg-white text-slate-700 border-b border-slate-200 overflow-x-auto">
               <div class="max-w-7xl mx-auto px-3 sm:px-6 flex items-center gap-1 py-1.5">
                 ${navTabs.map(t => {
                   const active = appState.activeTab === t.id;
@@ -2111,9 +2100,29 @@
           </header>
 
           <!-- Konten Utama -->
-          <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 py-5 sm:py-6">
+          <main class="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 pt-5 pb-24 md:py-6">
             ${tabContent}
           </main>
+
+          <!-- Bilah Navigasi Bawah Khusus HP (Mobile Bottom Navigation Bar) -->
+          <nav aria-label="Menu Navigasi HP"
+            class="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-4px_16px_rgba(15,23,42,0.08)] no-print"
+            style="padding-bottom: env(safe-area-inset-bottom);">
+            <div class="grid grid-cols-6 gap-0.5 px-1 py-1.5">
+              ${navTabs.map(t => {
+                const active = appState.activeTab === t.id;
+                return `
+                  <button type="button" onclick="appState.activeTab='${t.id}'; renderApp(); window.scrollTo({ top: 0, behavior: 'smooth' });"
+                    class="relative flex flex-col items-center justify-center py-1 px-0.5 rounded-xl transition ${active ? 'bg-emerald-50 text-emerald-800' : 'text-slate-500 hover:text-slate-900 active:bg-slate-100'}">
+                    ${active ? `<span class="absolute top-0 w-6 h-0.5 rounded-full bg-emerald-700"></span>` : ""}
+                    <span class="text-lg leading-none">${t.icon}</span>
+                    <span class="text-[10px] mt-1 leading-tight truncate max-w-full ${active ? 'font-extrabold text-emerald-900' : 'font-semibold'}">${t.shortLabel}</span>
+                    ${t.badge ? `<span class="absolute top-0.5 right-2 min-w-[16px] h-4 px-1 rounded-full bg-rose-600 text-white text-[9px] font-extrabold flex items-center justify-center">${t.badge}</span>` : ""}
+                  </button>
+                `;
+              }).join("")}
+            </div>
+          </nav>
         </div>
       `;
     }
@@ -2358,7 +2367,7 @@
                     <th class="p-3">Tanggal</th>
                     <th class="p-3">Rombel / Kelas</th>
                     <th class="p-3">Nama Guru</th>
-                    <th class="p-3">Materi & Metode</th>
+                    <th class="p-3">Materi Pembelajaran & Metode</th>
                     <th class="p-3 text-center">Hadir</th>
                     <th class="p-3 text-center">Aksi</th>
                   </tr>
@@ -2370,28 +2379,155 @@
                         Belum ada catatan jurnal guru pada bulan ${NAMA_BULAN[bulan - 1]} ${tahun}. Klik <strong>+ Tambah Jurnal</strong> untuk mulai mencatat.
                       </td>
                     </tr>
-                  ` : list.map(j => `
+                  ` : list.map(j => {
+                    const structuredMateri = MATERI_OPTIONS_LIST.filter(m => String(j[m.key] || "").trim() !== "");
+                    const isSyncedToLaporan = dbStore.laporan_mingguan.some(w =>
+                      w.rombel_id === j.rombel_id && w.tanggal === j.tanggal && !w.tidak_ada_kegiatan
+                    );
+                    return `
                     <tr class="hover:bg-slate-50">
-                      <td class="p-3 font-semibold whitespace-nowrap">${formatTanggalID(j.tanggal)}</td>
-                      <td class="p-3 font-medium text-slate-700">${escapeHTML(getRombelName(j.rombel_id))}</td>
-                      <td class="p-3 font-bold text-slate-900">${escapeHTML(j.nama_guru)}</td>
-                      <td class="p-3">
-                        <div class="font-semibold text-slate-900">${escapeHTML(j.materi)}</div>
+                      <td class="p-3 font-semibold whitespace-nowrap align-top">
+                        <div>${formatTanggalID(j.tanggal)}</div>
+                        ${isSyncedToLaporan ? `<span class="inline-block mt-1 px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">🔗 Terintegrasi Laporan</span>` : ""}
+                      </td>
+                      <td class="p-3 font-medium text-slate-700 align-top">${escapeHTML(getRombelName(j.rombel_id))}</td>
+                      <td class="p-3 font-bold text-slate-900 align-top">${escapeHTML(j.nama_guru)}</td>
+                      <td class="p-3 align-top">
+                        ${structuredMateri.length > 0 ? `
+                          <div class="flex flex-wrap gap-1.5 mb-1">
+                            ${structuredMateri.map(m => `
+                              <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-slate-800">
+                                <strong class="text-emerald-900">${m.label}:</strong> ${escapeHTML(j[m.key])}
+                              </span>
+                            `).join("")}
+                          </div>
+                        ` : `
+                          <div class="font-semibold text-slate-900">${escapeHTML(j.materi)}</div>
+                        `}
                         <div class="text-xs text-slate-500">${escapeHTML(j.metode || "-")} ${j.catatan ? `• ${escapeHTML(j.catatan)}` : ""}</div>
                       </td>
-                      <td class="p-3 text-center font-extrabold text-emerald-700">${j.jumlah_hadir}</td>
-                      <td class="p-3 text-center whitespace-nowrap">
+                      <td class="p-3 text-center font-extrabold text-emerald-700 align-top">${j.jumlah_hadir}</td>
+                      <td class="p-3 text-center whitespace-nowrap align-top">
                         <button type="button" onclick="openJurnalFormModal('${j.id}')" class="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs mr-1">Edit</button>
                         <button type="button" onclick="deleteJurnalItem('${j.id}')" class="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs">Hapus</button>
                       </td>
                     </tr>
-                  `).join("")}
+                  `;
+                  }).join("")}
                 </tbody>
               </table>
             </div>
           </div>
         </div>
       `;
+    }
+
+    function detectWeekAndSlotForJurnal(uid, rombelId, isoDate) {
+      const cleanDate = String(isoDate || getWIBParts().isoDate).slice(0, 10);
+      const parts = cleanDate.split("-").map(Number);
+      const jy = parts[0] || appState.selectedYear;
+      const jm = parts[1] || appState.selectedMonth;
+      const jd = parts[2] || 1;
+      const autoWeek = Math.min(5, Math.max(1, Math.ceil(jd / 7)));
+
+      const rombelObj = dbStore.rombel.find(r => r.id === rombelId);
+      const maxPt = Math.min(7, Math.max(1, Number(rombelObj?.pertemuan_per_minggu) || (isMudaMudiRombel(rombelObj?.nama_rombel) ? 2 : 5)));
+
+      const lap = dbStore.laporan_bulanan.find(l => l.kelompok_id === uid && Number(l.bulan) === jm && Number(l.tahun) === jy);
+      if (lap) {
+        const sameDateRow = dbStore.laporan_mingguan.find(w => w.laporan_id === lap.id && w.rombel_id === rombelId && w.tanggal === cleanDate);
+        if (sameDateRow) {
+          return { week: Number(sameDateRow.minggu_ke) || autoWeek, pertemuan: Number(sameDateRow.pertemuan_ke || 1), maxPt };
+        }
+        const weekRows = dbStore.laporan_mingguan
+          .filter(w => w.laporan_id === lap.id && w.rombel_id === rombelId && Number(w.minggu_ke) === autoWeek)
+          .sort((a, b) => Number(a.pertemuan_ke || 1) - Number(b.pertemuan_ke || 1));
+        const firstEmpty = weekRows.find(w => !w.tanggal && !w.tidak_ada_kegiatan && !MATERI_OPTIONS_LIST.some(m => String(w[m.key] || "").trim() !== ""));
+        if (firstEmpty) {
+          return { week: autoWeek, pertemuan: Number(firstEmpty.pertemuan_ke || 1), maxPt };
+        }
+      }
+      return { week: autoWeek, pertemuan: 1, maxPt };
+    }
+
+    function renderJurnalModalMateriInputsHTML() {
+      const selected = appState.jurnalModalSelectedMateri || [];
+      const draft = appState.jurnalModalDraftValues || {};
+      const chipButtons = MATERI_OPTIONS_LIST.map(m => {
+        const active = selected.includes(m.key);
+        return `
+          <button type="button" onclick="toggleJurnalModalMateri('${m.key}')"
+            class="px-3 py-1.5 rounded-xl border text-xs font-bold transition ${active ? 'bg-emerald-700 border-emerald-700 text-white shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'}">
+            ${active ? "✓ " : "+ "}${m.label}
+          </button>
+        `;
+      }).join("");
+
+      const activeInputs = selected.length > 0
+        ? `
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
+            ${MATERI_OPTIONS_LIST.filter(m => selected.includes(m.key)).map(m => `
+              <div>
+                <label class="block text-xs font-bold text-emerald-900 mb-1">Materi ${m.label} *</label>
+                <input id="jMat_${m.key}" type="text" required
+                  value="${escapeHTML(draft[m.key] || "")}"
+                  oninput="appState.jurnalModalDraftValues['${m.key}']=this.value"
+                  placeholder="${escapeHTML(m.placeholder)}"
+                  class="w-full px-3 py-2 rounded-xl border border-slate-300 focus:ring-2 focus:ring-emerald-500 outline-none text-xs sm:text-sm" />
+              </div>
+            `).join("")}
+          </div>
+        `
+        : `
+          <div class="mt-2 p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+            Pilih minimal 1 materi pembelajaran di atas (<strong>Pegon, Tajwid, Hafalan, Bacaan, Makna, atau Lain-lain</strong>).
+          </div>
+        `;
+
+      return `
+        <div>
+          <label class="block text-xs font-bold text-slate-700 mb-1.5">Opsi Materi Pembelajaran Hari Ini (Pilih satu atau lebih) *</label>
+          <div class="flex flex-wrap gap-1.5">${chipButtons}</div>
+          ${activeInputs}
+        </div>
+      `;
+    }
+
+    function toggleJurnalModalMateri(key) {
+      MATERI_OPTIONS_LIST.forEach(m => {
+        const el = document.getElementById(`jMat_${m.key}`);
+        if (el) appState.jurnalModalDraftValues[m.key] = el.value;
+      });
+      const cur = new Set(appState.jurnalModalSelectedMateri || []);
+      if (cur.has(key)) {
+        cur.delete(key);
+        appState.jurnalModalDraftValues[key] = "";
+      } else {
+        cur.add(key);
+      }
+      appState.jurnalModalSelectedMateri = Array.from(cur);
+      const container = document.getElementById("jurnalMateriFieldsContainer");
+      if (container) {
+        container.innerHTML = renderJurnalModalMateriInputsHTML();
+      }
+    }
+
+    function handleJurnalDateOrRombelChange() {
+      syncJurnalHadirFromPresensi(false);
+      const uid = appState.currentUser?.id;
+      const tgl = document.getElementById("jTanggal")?.value;
+      const rombelId = document.getElementById("jRombel")?.value;
+      if (!uid || !tgl || !rombelId) return;
+
+      const slotInfo = detectWeekAndSlotForJurnal(uid, rombelId, tgl);
+      const weekEl = document.getElementById("jSyncWeek");
+      const ptEl = document.getElementById("jSyncPertemuan");
+      if (weekEl) weekEl.value = String(slotInfo.week);
+      if (ptEl) {
+        ptEl.innerHTML = Array.from({ length: Math.max(slotInfo.maxPt, slotInfo.pertemuan, 5) }, (_, i) => i + 1)
+          .map(p => `<option value="${p}" ${slotInfo.pertemuan === p ? "selected" : ""}>Pertemuan ke-${p}</option>`)
+          .join("");
+      }
     }
 
     function openJurnalFormModal(editId = null) {
@@ -2405,18 +2541,33 @@
         ? item.jumlah_hadir
         : dbStore.presensi.filter(p => p.kelompok_id === uid && p.rombel_id === defaultRombelId && p.tanggal === defaultDate && p.status === "H").length;
 
+      // Inisialisasi pilihan 6 opsi materi pembelajaran
+      const draftVals = {};
+      MATERI_OPTIONS_LIST.forEach(m => {
+        draftVals[m.key] = item ? (item[m.key] || "") : "";
+      });
+      let detectedKeys = MATERI_OPTIONS_LIST.filter(m => String(draftVals[m.key]).trim() !== "").map(m => m.key);
+      if (item && detectedKeys.length === 0 && item.materi) {
+        draftVals.lain_lain = item.materi;
+        detectedKeys = ["lain_lain"];
+      }
+      appState.jurnalModalDraftValues = draftVals;
+      appState.jurnalModalSelectedMateri = detectedKeys;
+
+      const slotInfo = detectWeekAndSlotForJurnal(uid, defaultRombelId, defaultDate);
+
       openModal(
-        item ? "Edit Jurnal Guru" : "Tambah Jurnal Guru",
+        item ? "Edit Jurnal Guru & Materi Pembelajaran" : "Tambah Jurnal Guru & Materi Pembelajaran",
         `
           <form id="formJurnal" onsubmit="saveJurnalForm(event, '${editId || ""}')" class="space-y-3.5">
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label class="block text-xs font-bold text-slate-700 mb-1">Tanggal Pertemuan *</label>
-                <input id="jTanggal" type="date" required value="${defaultDate}" onchange="syncJurnalHadirFromPresensi()" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+                <input id="jTanggal" type="date" required value="${defaultDate}" onchange="handleJurnalDateOrRombelChange()" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
               </div>
               <div>
                 <label class="block text-xs font-bold text-slate-700 mb-1">Rombel / Kelas *</label>
-                <select id="jRombel" onchange="syncJurnalHadirFromPresensi()" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white">
+                <select id="jRombel" onchange="handleJurnalDateOrRombelChange()" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white">
                   ${rombels.map(r => `<option value="${r.id}" ${defaultRombelId === r.id ? "selected" : ""}>${escapeHTML(r.nama_rombel)}</option>`).join("")}
                 </select>
               </div>
@@ -2437,37 +2588,184 @@
                 <input id="jHadir" type="number" min="0" required value="${autoHadirCount}" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
               </div>
             </div>
-            <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">Materi yang Diajarkan *</label>
-              <input id="jMateri" type="text" required value="${escapeHTML(item?.materi || "")}" placeholder="Contoh: Tilawati Jilid 2 hal. 12 & Hafalan QS. Al-Fil" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+
+            <!-- 6 Opsi Materi Pembelajaran Terintegrasi ke Laporan Kegiatan -->
+            <div id="jurnalMateriFieldsContainer" class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+              ${renderJurnalModalMateriInputsHTML()}
             </div>
-            <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">Metode Pembelajaran</label>
-              <input id="jMetode" type="text" value="${escapeHTML(item?.metode || "")}" placeholder="Contoh: Klasikal, Sorogan / Privat, Tanya Jawab" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm" />
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Metode Pembelajaran</label>
+                <input id="jMetode" type="text" value="${escapeHTML(item?.metode || "")}" placeholder="Contoh: Klasikal, Sorogan, Tanya Jawab" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold text-slate-700 mb-1">Catatan Tambahan Pertemuan</label>
+                <input id="jCatatan" type="text" value="${escapeHTML(item?.catatan || "")}" placeholder="Catatan perkembangan santri (opsional)" class="w-full px-3.5 py-2 rounded-xl border border-slate-300 text-sm" />
+              </div>
             </div>
-            <div>
-              <label class="block text-xs font-bold text-slate-700 mb-1">Catatan Tambahan Pertemuan</label>
-              <textarea id="jCatatan" rows="2" placeholder="Catatan perkembangan santri atau keterangan lainnya" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm">${escapeHTML(item?.catatan || "")}</textarea>
+
+            <!-- Panel Integrasi Otomatis ke Laporan Kegiatan -->
+            <div class="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200 space-y-2.5">
+              <label class="flex items-start gap-2.5 cursor-pointer">
+                <input id="jAutoSyncLaporan" type="checkbox" checked class="mt-0.5 rounded border-emerald-400 text-emerald-700" />
+                <div class="text-xs">
+                  <div class="font-extrabold text-emerald-950">🔗 Otomatis Integrasikan ke Laporan Kegiatan (Menu 3)</div>
+                  <div class="text-emerald-800 mt-0.5">Materi pembelajaran di atas akan langsung terisi ke jadwal mingguan Laporan Bulanan sehingga tidak perlu input dua kali.</div>
+                </div>
+              </label>
+              <div class="grid grid-cols-2 gap-2 pl-6">
+                <div>
+                  <label class="block text-[11px] font-bold text-emerald-900 mb-0.5">Target Minggu di Laporan</label>
+                  <select id="jSyncWeek" class="w-full px-2.5 py-1.5 rounded-xl border border-emerald-300 bg-white text-xs font-bold text-slate-800">
+                    ${[1, 2, 3, 4, 5].map(w => `<option value="${w}" ${slotInfo.week === w ? "selected" : ""}>Minggu ke-${w}</option>`).join("")}
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-[11px] font-bold text-emerald-900 mb-0.5">Slot Pertemuan</label>
+                  <select id="jSyncPertemuan" class="w-full px-2.5 py-1.5 rounded-xl border border-emerald-300 bg-white text-xs font-bold text-slate-800">
+                    ${Array.from({ length: Math.max(slotInfo.maxPt, slotInfo.pertemuan, 5) }, (_, i) => i + 1)
+                      .map(p => `<option value="${p}" ${slotInfo.pertemuan === p ? "selected" : ""}>Pertemuan ke-${p}</option>`)
+                      .join("")}
+                  </select>
+                </div>
+              </div>
             </div>
           </form>
         `,
         `
           <button type="button" onclick="closeModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-sm font-semibold">Batal</button>
-          <button type="submit" form="formJurnal" class="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-bold">Simpan Jurnal</button>
+          <button type="submit" form="formJurnal" class="px-5 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-sm font-bold">Simpan Jurnal & Sinkronkan</button>
         `
       );
+    }
+
+    async function syncJurnalToLaporanKegiatan(jurnalRow, targetWeek, targetPertemuan) {
+      const uid = jurnalRow.kelompok_id;
+      const rombelId = jurnalRow.rombel_id;
+      if (!uid || !rombelId || !jurnalRow.tanggal) return false;
+
+      const [jy, jm] = String(jurnalRow.tanggal).split("-").map(Number);
+      if (!jy || !jm) return false;
+
+      const lap = ensureMonthlyReportAndRows(uid, jm, jy);
+
+      // Cari baris dengan tanggal & rombel yang sama terlebih dahulu agar edit tidak menggandakan
+      let targetRow = dbStore.laporan_mingguan.find(w =>
+        w.laporan_id === lap.id &&
+        w.rombel_id === rombelId &&
+        w.tanggal === jurnalRow.tanggal
+      );
+
+      if (!targetRow) {
+        targetRow = dbStore.laporan_mingguan.find(w =>
+          w.laporan_id === lap.id &&
+          w.rombel_id === rombelId &&
+          Number(w.minggu_ke) === Number(targetWeek) &&
+          Number(w.pertemuan_ke || 1) === Number(targetPertemuan)
+        );
+      }
+
+      if (!targetRow) {
+        targetRow = {
+          id: generateUUID(),
+          laporan_id: lap.id,
+          rombel_id: rombelId,
+          minggu_ke: Number(targetWeek) || 1,
+          pertemuan_ke: Number(targetPertemuan) || 1,
+          tanggal: jurnalRow.tanggal,
+          pegon: "",
+          bacaan: "",
+          tajwid: "",
+          hafalan: "",
+          makna: "",
+          lain_lain: "",
+          tidak_ada_kegiatan: false,
+          alasan: "",
+          keterangan: ""
+        };
+        dbStore.laporan_mingguan.push(targetRow);
+      }
+
+      targetRow.tanggal = jurnalRow.tanggal;
+      targetRow.tidak_ada_kegiatan = false;
+      targetRow.alasan = "";
+      targetRow.pegon = jurnalRow.pegon || "";
+      targetRow.tajwid = jurnalRow.tajwid || "";
+      targetRow.hafalan = jurnalRow.hafalan || "";
+      targetRow.bacaan = jurnalRow.bacaan || "";
+      targetRow.makna = jurnalRow.makna || "";
+      targetRow.lain_lain = jurnalRow.lain_lain || "";
+
+      const ketParts = [
+        jurnalRow.metode ? `Metode: ${jurnalRow.metode}` : "",
+        jurnalRow.catatan || ""
+      ].filter(Boolean);
+      targetRow.keterangan = ketParts.join(" • ");
+
+      appState.weeklySelectedMateriMap[targetRow.id] = MATERI_OPTIONS_LIST
+        .filter(m => String(targetRow[m.key] || "").trim() !== "")
+        .map(m => m.key);
+
+      if (Number(targetRow.minggu_ke) === 5) {
+        appState.showWeek5 = true;
+      }
+
+      if (isLiveSupabase && supabaseClient) {
+        await resilientSupabaseMutation("laporan_bulanan", "upsert", lap, null, { onConflict: "kelompok_id,bulan,tahun" });
+        await resilientSupabaseMutation(
+          "laporan_mingguan",
+          "upsert",
+          { ...targetRow, tanggal: targetRow.tanggal || null },
+          null,
+          { onConflict: "laporan_id,rombel_id,minggu_ke,pertemuan_ke" }
+        );
+      }
+
+      return true;
     }
 
     async function saveJurnalForm(e, editId) {
       e.preventDefault();
       const uid = appState.currentUser.id;
+      const selectedKeys = appState.jurnalModalSelectedMateri || [];
+
+      const materiValues = {
+        pegon: "",
+        tajwid: "",
+        hafalan: "",
+        bacaan: "",
+        makna: "",
+        lain_lain: ""
+      };
+
+      selectedKeys.forEach(k => {
+        const el = document.getElementById(`jMat_${k}`);
+        materiValues[k] = el ? el.value.trim() : String(appState.jurnalModalDraftValues[k] || "").trim();
+      });
+
+      const filledPairs = MATERI_OPTIONS_LIST
+        .filter(m => String(materiValues[m.key] || "").trim() !== "")
+        .map(m => `${m.label}: ${materiValues[m.key]}`);
+
+      if (filledPairs.length === 0) {
+        showToast("Pilih dan isi minimal 1 opsi materi pembelajaran hari ini.", "warning");
+        return;
+      }
+
       const payload = {
         id: editId || generateUUID(),
         kelompok_id: uid,
         rombel_id: document.getElementById("jRombel").value || null,
         tanggal: document.getElementById("jTanggal").value,
         nama_guru: document.getElementById("jGuru").value.trim(),
-        materi: document.getElementById("jMateri").value.trim(),
+        materi: filledPairs.join(" | "),
+        pegon: materiValues.pegon,
+        tajwid: materiValues.tajwid,
+        hafalan: materiValues.hafalan,
+        bacaan: materiValues.bacaan,
+        makna: materiValues.makna,
+        lain_lain: materiValues.lain_lain,
         metode: document.getElementById("jMetode").value.trim(),
         jumlah_hadir: parseInt(document.getElementById("jHadir").value, 10) || 0,
         catatan: document.getElementById("jCatatan").value.trim()
@@ -2490,8 +2788,21 @@
         dbStore.jurnal_guru.unshift({ ...payload, created_at: new Date().toISOString() });
       }
 
+      const shouldAutoSync = document.getElementById("jAutoSyncLaporan")?.checked;
+      let syncedOk = false;
+      if (shouldAutoSync) {
+        const syncWeek = parseInt(document.getElementById("jSyncWeek")?.value, 10) || 1;
+        const syncPt = parseInt(document.getElementById("jSyncPertemuan")?.value, 10) || 1;
+        syncedOk = await syncJurnalToLaporanKegiatan(payload, syncWeek, syncPt);
+      }
+
       closeModal();
-      showToast("Jurnal guru berhasil disimpan!", "success");
+      showToast(
+        syncedOk
+          ? "Jurnal guru disimpan & otomatis terintegrasi ke Laporan Kegiatan!"
+          : "Jurnal guru berhasil disimpan!",
+        "success"
+      );
       logActivity("Simpan Jurnal Guru", `${payload.nama_guru} - ${payload.materi}`);
       renderApp();
     }
@@ -2543,7 +2854,12 @@
         Tanggal: j.tanggal,
         "Rombel / Kelas": getRombelName(j.rombel_id),
         "Nama Guru": j.nama_guru,
-        "Materi Diajarkan": j.materi,
+        Pegon: j.pegon || "-",
+        Tajwid: j.tajwid || "-",
+        Hafalan: j.hafalan || "-",
+        Bacaan: j.bacaan || "-",
+        Makna: j.makna || "-",
+        "Lain-lain": j.lain_lain || (!j.pegon && !j.tajwid && !j.hafalan && !j.bacaan && !j.makna ? j.materi : "-"),
         "Metode Pembelajaran": j.metode || "-",
         "Jumlah Hadir": j.jumlah_hadir,
         Catatan: j.catatan || "-"
@@ -3456,16 +3772,24 @@
           <div class="space-y-3">
             ${weekRows.map(row => {
               const selectedKeys = getSelectedMateriKeysForRow(row);
+              const linkedJurnal = row.tanggal
+                ? dbStore.jurnal_guru.find(j => j.kelompok_id === uid && j.rombel_id === activeRombelId && j.tanggal === row.tanggal)
+                : null;
               return `
                 <div class="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5 shadow-sm space-y-3">
                   <div class="flex flex-wrap items-center justify-between gap-3 pb-2.5 border-b border-slate-100">
-                    <div class="flex flex-wrap items-center gap-3">
+                    <div class="flex flex-wrap items-center gap-2.5">
                       <span class="px-3 py-1 rounded-xl bg-emerald-100 text-emerald-900 font-extrabold text-xs">
                         Pertemuan ke-${row.pertemuan_ke || 1}
                       </span>
                       <input type="date" value="${escapeHTML(row.tanggal || "")}"
                         onchange="updateWeeklyRowField('${row.id}', 'tanggal', this.value)"
                         class="px-3 py-1.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold" />
+                      ${linkedJurnal ? `
+                        <span class="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold text-[11px]">
+                          🔗 Tersinkron dari Jurnal (${escapeHTML(linkedJurnal.nama_guru)})
+                        </span>
+                      ` : ""}
                     </div>
                     <label class="inline-flex items-center gap-2 text-xs font-bold text-rose-700 cursor-pointer">
                       <input type="checkbox" ${row.tidak_ada_kegiatan ? "checked" : ""}
@@ -3620,16 +3944,24 @@
         if (targetRow) {
           targetRow.tanggal = j.tanggal;
           targetRow.tidak_ada_kegiatan = false;
-          targetRow.lain_lain = j.materi;
+          targetRow.alasan = "";
+          const hasStructured = MATERI_OPTIONS_LIST.some(m => String(j[m.key] || "").trim() !== "");
+          if (hasStructured) {
+            MATERI_OPTIONS_LIST.forEach(m => {
+              targetRow[m.key] = j[m.key] || "";
+            });
+          } else {
+            targetRow.lain_lain = j.materi || "";
+          }
           targetRow.keterangan = [j.metode ? `Metode: ${j.metode}` : "", j.catatan || ""].filter(Boolean).join(" • ");
-          const curKeys = new Set(getSelectedMateriKeysForRow(targetRow));
-          curKeys.add("lain_lain");
-          appState.weeklySelectedMateriMap[targetRow.id] = Array.from(curKeys);
+          appState.weeklySelectedMateriMap[targetRow.id] = MATERI_OPTIONS_LIST
+            .filter(m => String(targetRow[m.key] || "").trim() !== "")
+            .map(m => m.key);
           filled++;
         }
       });
 
-      showToast(`${filled} pertemuan Minggu ke-${targetWeek} berhasil diisi otomatis dari Jurnal Guru!`, "success");
+      showToast(`${filled} pertemuan Minggu ke-${targetWeek} berhasil disinkronkan dari Jurnal Guru!`, "success");
       renderApp();
     }
 
