@@ -5740,13 +5740,77 @@
     function mergeKendalaExtraFields() {
       const cache = loadKendalaExtraCache();
       dbStore.kendala_evaluasi.forEach(k => {
+        if (typeof k.deskripsi === "string" && k.deskripsi.includes("[Tindak Lanjut:")) {
+          const tlMatch = k.deskripsi.match(/\n?\[Tindak Lanjut:\s*([^\]]+)\]/);
+          if (tlMatch) {
+            if (!k.solusi) k.solusi = tlMatch[1].trim();
+            k.deskripsi = k.deskripsi.replace(tlMatch[0], "").trim();
+          }
+        }
+        if (typeof k.deskripsi === "string" && k.deskripsi.includes("[Saran Daerah:")) {
+          const sdMatch = k.deskripsi.match(/\n?\[Saran Daerah:\s*([^\]]+)\]/);
+          if (sdMatch) {
+            if (!k.saran_daerah) k.saran_daerah = sdMatch[1].trim();
+            k.deskripsi = k.deskripsi.replace(sdMatch[0], "").trim();
+          }
+        }
+        if (typeof k.deskripsi === "string" && k.deskripsi.includes("[Tanggapan Admin:")) {
+          const taMatch = k.deskripsi.match(/\n?\[Tanggapan Admin:\s*([^\]]+)\]/);
+          if (taMatch) {
+            if (!k.tanggapan_admin) k.tanggapan_admin = taMatch[1].trim();
+            if (!k.status_tindak_lanjut) k.status_tindak_lanjut = "Ditanggapi Pengurus Daerah";
+            k.deskripsi = k.deskripsi.replace(taMatch[0], "").trim();
+          }
+        }
         const extra = cache[k.id];
         if (extra) {
+          if (!k.solusi && extra.solusi) k.solusi = extra.solusi;
           if (!k.saran_daerah && extra.saran_daerah) k.saran_daerah = extra.saran_daerah;
           if (!k.tanggapan_admin && extra.tanggapan_admin) k.tanggapan_admin = extra.tanggapan_admin;
           if (!k.status_tindak_lanjut && extra.status_tindak_lanjut) k.status_tindak_lanjut = extra.status_tindak_lanjut;
         }
       });
+    }
+
+    async function mutateKendalaEvaluasiSafe(operation, fullRow, matchObj = null) {
+      if (!isLiveSupabase || !supabaseClient) {
+        return { data: null, error: null };
+      }
+      let payload = { ...fullRow };
+      const strippedCols = new Set();
+
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const res = await resilientSupabaseMutation("kendala_evaluasi", operation, payload, matchObj);
+        if (!res.error) return res;
+
+        const msg = String(res.error.message || "");
+        const colMatch =
+          msg.match(/Could not find the ['"]([^'"]+)['"] column/i) ||
+          msg.match(/column ['"]([^'"]+)['"] of relation/i);
+        if (colMatch && colMatch[1] && Object.prototype.hasOwnProperty.call(payload, colMatch[1])) {
+          const missingCol = colMatch[1];
+          strippedCols.add(missingCol);
+          delete payload[missingCol];
+
+          if (operation === "insert" && Object.prototype.hasOwnProperty.call(payload, "deskripsi")) {
+            const extraLines = [];
+            if (strippedCols.has("solusi") && fullRow.solusi) {
+              extraLines.push(`[Tindak Lanjut: ${fullRow.solusi}]`);
+            }
+            if (strippedCols.has("saran_daerah") && fullRow.saran_daerah) {
+              extraLines.push(`[Saran Daerah: ${fullRow.saran_daerah}]`);
+            }
+            payload.deskripsi = [fullRow.deskripsi, ...extraLines].filter(Boolean).join("\n");
+          }
+
+          if (Object.keys(payload).length === 0) {
+            return { data: null, error: null };
+          }
+          continue;
+        }
+        return res;
+      }
+      return await resilientSupabaseMutation("kendala_evaluasi", operation, payload, matchObj);
     }
 
     function renderUserKendalaTab() {
@@ -5849,34 +5913,30 @@
     async function saveKendalaForm(e) {
       e.preventDefault();
       const uid = appState.currentUser.id;
+      const solusiVal = document.getElementById("kSolusi")?.value.trim() || "";
       const saranDaerahVal = document.getElementById("kSaranDaerah")?.value.trim() || "";
-      const coreRow = {
+      const fullRow = {
         id: generateUUID(),
         kelompok_id: uid,
         bulan: appState.selectedMonth,
         tahun: appState.selectedYear,
         kategori: document.getElementById("kKategori").value,
         deskripsi: document.getElementById("kDeskripsi").value.trim(),
-        solusi: document.getElementById("kSolusi").value.trim()
-      };
-      const fullRow = {
-        ...coreRow,
+        solusi: solusiVal,
         saran_daerah: saranDaerahVal,
         tanggapan_admin: "",
         status_tindak_lanjut: ""
       };
 
-      saveKendalaExtraCache(coreRow.id, {
+      saveKendalaExtraCache(fullRow.id, {
+        solusi: solusiVal,
         saran_daerah: saranDaerahVal,
         tanggapan_admin: "",
         status_tindak_lanjut: ""
       });
 
       if (isLiveSupabase && supabaseClient) {
-        let res = await resilientSupabaseMutation("kendala_evaluasi", "insert", fullRow);
-        if (res.error) {
-          res = await resilientSupabaseMutation("kendala_evaluasi", "insert", coreRow);
-        }
+        const res = await mutateKendalaEvaluasiSafe("insert", fullRow);
         if (res.error) {
           showToast("Gagal menyimpan kendala & saran: " + res.error.message, "error");
           return;
@@ -6710,18 +6770,27 @@
       k.status_tindak_lanjut = replyVal ? "Ditanggapi Pengurus Daerah" : "";
 
       saveKendalaExtraCache(kendalaId, {
+        solusi: k.solusi || "",
         saran_daerah: k.saran_daerah || "",
         tanggapan_admin: k.tanggapan_admin,
         status_tindak_lanjut: k.status_tindak_lanjut
       });
 
       if (isLiveSupabase && supabaseClient) {
-        await resilientSupabaseMutation(
-          "kendala_evaluasi",
+        const res = await mutateKendalaEvaluasiSafe(
           "update",
           { tanggapan_admin: k.tanggapan_admin, status_tindak_lanjut: k.status_tindak_lanjut },
           { id: kendalaId }
         );
+        if (res.error) {
+          const combinedDesc = [
+            k.deskripsi,
+            k.solusi ? `[Tindak Lanjut: ${k.solusi}]` : "",
+            k.saran_daerah ? `[Saran Daerah: ${k.saran_daerah}]` : "",
+            k.tanggapan_admin ? `[Tanggapan Admin: ${k.tanggapan_admin}]` : ""
+          ].filter(Boolean).join("\n");
+          await resilientSupabaseMutation("kendala_evaluasi", "update", { deskripsi: combinedDesc }, { id: kendalaId });
+        }
       }
 
       showToast("Tanggapan Pengurus Daerah berhasil dikirim ke akun kelompok!", "success");
